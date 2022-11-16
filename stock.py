@@ -1,11 +1,13 @@
 import requests
 from bs4 import BeautifulSoup
+import pandas as pd
 
 class Stock():
     
     def __init__(self, n):
         
         self.name = n
+        self.df = {}
 
         self.domain = "https://www.biznesradar.pl"
         self.f_statement = "/raporty-finansowe-rachunek-zyskow-i-strat/"
@@ -160,6 +162,7 @@ class Stock():
         f.write("c_liabilities;" + ";".join(str(d) for d in self.c_liabilities)  + "\n")
         f.write("c_borrowings;" + ";".join(str(d) for d in self.c_borrowings)  + "\n")
         f.write("non_c_borrowings;" + ";".join(str(d) for d in self.non_c_borrowings)  + "\n")
+        f.close()
 
 
     def check_length(self):
@@ -193,5 +196,83 @@ class Stock():
         self.check_length()
         self.save_to_file()
     
+
+    def read_data_from_csv_to_DF(self):
+
+        """ Reading data from a csv that has been previously saved"""
+
+        po = {}
+        f = open(f'data/{self.name}.csv', "r")
+        lines = f.readlines()
+
+        for line in lines:
+            data = line.strip().split(";")
+            if data[0] == "date":
+                d = data[1:]
+            elif data[0] in ['share_amount', 'price']:
+                d = [float(x) for x in data[1:]]
+            else:
+                d = [float(x)*1000 for x in data[1:]]
+            po[data[0]] = d
+        f.close()
+
+        self.df = pd.DataFrame(po)
+        self.add_ttm_to_DF()
+        self.add_indicators_to_DF()
+
+    
+    def add_ttm_to_DF(self):
+
+        """ Adding trailing twelve months to DataFrame 
+            Revenue TTM
+            EBIT TTM
+            Net profit TTM
+        """
+
+        rev_ttm = [0,0,0]
+        ebit_ttm = [0,0,0]
+        net_ttm = [0,0,0]
         
+        rev = self.df['revenue']
+        ebit = self.df['EBIT']
+        net = self.df['net_profit']
+
+        for index, row in self.df.iterrows():
+
+            if index > 2:
+                rev_ttm.append(rev[index] + rev[index-1] + rev[index-2] + rev[index-3])
+                ebit_ttm.append(ebit[index] + ebit[index-1] + ebit[index-2] + ebit[index-3])
+                net_ttm.append(net[index] + net[index-1] + net[index-2] + net[index-3])
+            
+        self.df['revenue_ttm'] = rev_ttm
+        self.df['EBIT_ttm'] = ebit_ttm
+        self.df['net_profit_ttm'] = net_ttm
+
+
+    def add_indicators_to_DF(self):
+
+        """ Adding indicators to DataFrame 
+            EV, EV/EBIT
+            Working capital, EBIT/Working capital
+            EPS, P/E
+            Current Ratio
+        """
+
+        self.df['EV'] = self.df['share_amount'] \
+            * self.df['price'] \
+            + self.df['c_borrowings'] \
+            + self.df['non_c_borrowings'] \
+            - self.df['cash']
+
+        self.df['EV/EBIT'] = self.df['EV'] / self.df['EBIT_ttm']
+
+        self.df['working capital'] = self.df['c_assets'] - self.df['c_liabilities']
+        self.df['EBIT/working capital'] = self.df['EBIT_ttm'] / self.df['working capital']
+
+        self.df['EPS'] = self.df['net_profit_ttm'] / self.df['share_amount']
+        self.df['P/E'] = self.df['price'] / self.df['EPS']
+
+        self.df['current ratio'] = self.df['c_assets'] / self.df['c_liabilities']
+
+
 
