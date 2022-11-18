@@ -7,6 +7,7 @@ class Stock():
     def __init__(self, n):
         
         self.name = n
+        self.current_price = 0
         self.df = {}
 
         self.domain = "https://www.biznesradar.pl"
@@ -275,4 +276,74 @@ class Stock():
         self.df['current ratio'] = self.df['c_assets'] / self.df['c_liabilities']
 
 
+    def set_current_price(self, price):
 
+        self.current_price = price
+
+
+    def weighted_mean(self, mean, median):
+
+        return (mean + median * 9) / 10
+
+    def length_to_look_back(self):
+
+        """ How many financial quarters look back"""
+
+        l = 0
+        le = len(self.df)
+
+        if le > 50: l = 40
+        elif le > 30: l = 20
+        elif le > 15: l = 12
+        else: return 0
+
+        return l
+
+
+    def estimate_price_PE(self, PE):
+
+        """ Estimate price according to given P/E indicator """
+
+        net = self.df['net_profit_ttm'].iat[-1]
+        share = self.df['share_amount'].iat[-1]
+
+        return PE * (net / share)
+
+
+    def estimate_price_PE_history(self):
+
+        """ Estimate price according to historical P/E indicator """
+
+        l = self.length_to_look_back()
+        if not l: return 0
+        
+        mean = self.df['P/E'][-l:].mean()
+        median = self.df['P/E'][-l:].describe()['50%']
+
+        return self.estimate_price_PE(self.weighted_mean(mean, median))
+
+
+    def estimate_price_EVEBIT(self, EVEBIT):
+
+        """ Estimate price according to given EV/EBIT indicator """
+        
+        EBIT = self.df['EBIT_ttm'].iat[-1]
+        cash = self.df['cash'].iat[-1]
+        c_bor = self.df['c_borrowings'].iat[-1]
+        non_c_bor = self.df['non_c_borrowings'].iat[-1]
+        share = self.df['share_amount'].iat[-1]
+
+        return (EVEBIT * EBIT - c_bor - non_c_bor + cash) / share
+
+
+    def estimate_price_EVEBIT_history(self):
+
+        """ Estimate price according to historical EV/EBIT indicator """
+
+        l = self.length_to_look_back()
+        if not l: return 0
+
+        mean = self.df['EV/EBIT'][-l:].mean()
+        median = self.df['EV/EBIT'][-l:].describe()['50%']
+
+        return self.estimate_price_EVEBIT(self.weighted_mean(mean, median))
